@@ -1,0 +1,39 @@
+name: Build and Scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    # Java (今回アプリケーションを作る言語) を使えるようにする
+    - uses: actions/checkout@v2
+    - name: Set up JDK 17
+      uses: actions/setup-java@v2
+      with:
+        java-version: '17'
+        distribution: 'adopt'
+
+    # JFrog　CLIを使えるようにする
+    - name: Set up JFrog CLI
+      uses: jfrog/setup-jfrog-cli@v2
+
+    # TODO: アプリケーションをテスト・ビルドし、Artifactoryにプッシュする
+    - name: Build and publish the application
+      run: |
+        ./gradlew bootJar
+        docker build -t ${{ secrets.JFROG_URL }}/handson-docker/sample-app:latest .
+        jfrog c add my-jfrog-server --url=https://${{ secrets.JFROG_URL }} --user=${{ secrets.JFROG_USER }} --password=${{ secrets.JFROG_API_KEY }}
+        jfrog rt dp ${{ secrets.JFROG_URL }}/handson-docker/sample-app:latest handson-docker --build-name=handson-build --build-number=${{ env.JFROG_CLI_BUILD_NUMBER }} --server-id=my-jfrog-server
+        jfrog rt bce handson-build ${{ env.JFROG_CLI_BUILD_NUMBER }}
+        jfrog rt bp handson-build ${{ env.JFROG_CLI_BUILD_NUMBER }}
+
+    # TODO: 脆弱性のスキャンを行う
+    - name: Scan artifacts
+      run: jfrog rt bs handson-build ${{ env.JFROG_CLI_BUILD_NUMBER }}
